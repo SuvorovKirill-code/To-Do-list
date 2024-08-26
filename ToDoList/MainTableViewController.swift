@@ -6,13 +6,32 @@
 //
 
 import UIKit
+import CoreData
 
 class MainTableViewController: UITableViewController {
 
-    var tasks: [String] = []
+    var tasks: [Task] = []
+    
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        
+        let context = getContext()
+        let fetchRequest: NSFetchRequest<Task> = Task.fetchRequest()
+        
+        do {
+            tasks = try context.fetch(fetchRequest)
+        } catch let error as NSError {
+            print(error.localizedDescription)
+        }
+    }
     
     override func viewDidLoad() {
         super.viewDidLoad()
+    }
+    
+    private func getContext() -> NSManagedObjectContext {
+        let appDeligate = UIApplication.shared.delegate as! AppDelegate
+        return appDeligate.persistentContainer.viewContext
     }
     
     @IBAction func addTask(_ sender: UIBarButtonItem) {
@@ -22,7 +41,7 @@ class MainTableViewController: UITableViewController {
         let saveAction = UIAlertAction(title: "Save", style: .default) { action in
             let textField = alertController.textFields?.first
             if let newTask = textField?.text {
-                self.tasks.insert(newTask, at: 0)
+                self.saveTask(withTitle: newTask)
                 self.tableView.reloadData()
             }
         }
@@ -37,6 +56,23 @@ class MainTableViewController: UITableViewController {
         present(alertController, animated: true)
     }
     
+    private func saveTask(withTitle title: String) {
+        
+        let context = getContext()
+        
+        guard let entity = NSEntityDescription.entity(forEntityName: "Task", in: context) else { return }
+        
+        let taskObject = Task(entity: entity, insertInto: context)
+        taskObject.title = title
+        
+        do {
+            try context.save()
+            tasks.append(taskObject)
+        } catch let error as NSError {
+            print(error.localizedDescription)
+        }
+    }
+    
     // MARK: - Table view data source
 
     override func numberOfSections(in tableView: UITableView) -> Int {
@@ -49,16 +85,39 @@ class MainTableViewController: UITableViewController {
         return tasks.count
     }
 
-    
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "Cell", for: indexPath)
 
         var content = cell.defaultContentConfiguration()
-        content.text = tasks[indexPath.row]
+        let task = tasks[indexPath.row]
+        content.text = task.title
         
         cell.contentConfiguration = content
         return cell
     }
     
+    
+    override func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
+        
+        if editingStyle == .delete {
+            let context = getContext()
+            let fetchRequest: NSFetchRequest<Task> = Task.fetchRequest()
+            
+            do {
+                tasks.remove(at: indexPath.row)
+                let objects = try context.fetch(fetchRequest)
+                let objectToDelete = objects[indexPath.row]
+                context.delete(objectToDelete)
 
+                try context.save()
+
+                tableView.deleteRows(at: [indexPath], with: .automatic)
+                
+            } catch let error as NSError {
+                print("Could not fetch or delete: \(error), \(error.userInfo)")
+            }
+        }
+    }
+    
+    
 }
